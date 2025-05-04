@@ -1,7 +1,19 @@
 [package]
-name = "gdb-mcp"
+name = "debuggers-mcp"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "gdb-mcp"
+path = "src/bin/gdb.rs"
+
+[[bin]]
+name = "lldb-mcp"
+path = "src/bin/lldb.rs"
+
+[[bin]]
+name = "pdb-mcp"
+path = "src/bin/pdb.rs"
 
 [dependencies]
 rmcp = { version = "0.1", features = ["server"] }

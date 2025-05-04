@@ -2,9 +2,9 @@
 #include <stdlib.h>
 
 void function_that_crashes() {
-    // Access a null pointer to cause a segmentation fault
-    int *ptr = NULL;
-    *ptr = 42;  // This will cause a crash
+    // Cause segmentation fault
+    char *ptr = "static string";
+    ptr[0] = 42;  // This will cause a crash
 }
 
 void function_with_args(int a, int b) {
