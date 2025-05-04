@@ -26,20 +26,29 @@ impl Gdb {
         }
     }
 
-    #[tool(description = "Start a new GDB debugging session")]
+    #[tool(
+        description = "Start a new GDB debugging session. When done using it, terminate the session"
+    )]
     async fn gdb_start(&self) -> Result<String, String> {
         let session_name = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis()
             .to_string();
-        let gdb_session =
+        let mut session =
             GdbSession::new().map_err(|err| format!("Failed to start GDB session: {}", err))?;
+        let response = session
+            .read_response()
+            .await
+            .map_err(|err| format!("Failed to start GDB session: {}", err))?;
         self.sessions
             .lock()
             .await
-            .insert(session_name.clone(), gdb_session);
-        Ok(format!("GDB session started with ID {}", session_name))
+            .insert(session_name.clone(), session);
+        Ok(format!(
+            "GDB session started with ID {}. [GDB output]: {}",
+            session_name, response
+        ))
     }
 
     #[tool(description = "Load a program into a GDB session")]
@@ -102,6 +111,27 @@ impl Gdb {
 
         Ok(format!("Command executed.\n[GDB output]: {}", response))
     }
+
+    #[tool(description = "Terminate a GDB session")]
+    async fn gdb_terminate(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "GDB session ID")]
+        session_id: String,
+    ) -> Result<String, String> {
+        let mut sessions = self.sessions.lock().await;
+        let session = sessions.get_mut(&session_id).ok_or(format!(
+            "Session with ID {} not found. Start a new session",
+            session_id
+        ))?;
+
+        session
+            .terminate()
+            .await
+            .map_err(|err| format!("Failed to terminate GDB session: {}", err))?;
+        sessions.remove(&session_id);
+        Ok("GDB session terminated".to_string())
+    }
 }
 
 #[tool(tool_box)]
@@ -115,8 +145,7 @@ impl ServerHandler for Gdb {
     }
 }
 
-pub struct GdbSession {
-    #[allow(unused)]
+struct GdbSession {
     process: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
     stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
@@ -183,5 +212,11 @@ impl GdbSession {
     async fn execute_command(&mut self, command: &str) -> Result<String, std::io::Error> {
         self.send_command(command).await?;
         self.read_response().await
+    }
+
+    async fn terminate(&mut self) -> Result<(), std::io::Error> {
+        self.send_command("quit").await?;
+        self.process.wait().await?;
+        Ok(())
     }
 }
