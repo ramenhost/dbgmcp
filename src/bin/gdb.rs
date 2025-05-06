@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-use debuggers_mcp::{CLIDebugSession, CLIDebugger, generate_session_id};
+use dbgmcp::{CLIDebugSession, CLIDebugger, generate_session_id};
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -66,7 +66,7 @@ impl GdbServer {
         #[schemars(description = "GDB session ID")]
         session_id: String,
         #[tool(param)]
-        #[schemars(description = "Path to the program to debug")]
+        #[schemars(description = "Absolute path to the program to debug")]
         program: String,
         #[tool(param)]
         #[schemars(description = "Arguments to pass to the program")]
@@ -78,7 +78,7 @@ impl GdbServer {
             session_id
         ))?;
 
-        let response = async || -> Result<String, std::io::Error> {
+        let run_commands = async || -> Result<String, std::io::Error> {
             let mut response = session
                 .execute_command(&format!("file {}", program))
                 .await?;
@@ -89,9 +89,10 @@ impl GdbServer {
                 response.push_str(&args_response);
             }
             Ok(response)
-        }()
-        .await
-        .map_err(|err| format!("Failed to load program. [Error]: {}", err))?;
+        };
+        let response = run_commands()
+            .await
+            .map_err(|err| format!("Failed to load program. [Error]: {}", err))?;
 
         Ok(format!(
             "Program loaded into GDB.\n [GDB output]: {}",
@@ -121,6 +122,31 @@ impl GdbServer {
             .map_err(|err| format!("Failed to execute GDB command. [Error]: {}", err))?;
 
         Ok(format!("Command executed.\n[GDB output]: {}", response))
+    }
+
+    #[tool(description = "Wait for GDB debugee to hit a breakpoint or stop running")]
+    async fn gdb_wait(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "GDB session ID")]
+        session_id: String,
+        #[tool(param)]
+        #[schemars(description = "Timeout in seconds")]
+        timeout: Option<u64>,
+    ) -> Result<String, String> {
+        let mut sessions = self.sessions.lock().await;
+        let session = sessions.get_mut(&session_id).ok_or(format!(
+            "Session with ID {} not found. Start a new session",
+            session_id
+        ))?;
+        let timeout = Duration::from_secs(timeout.unwrap_or(10));
+
+        let response = session
+            .read_response_until(Some("*stopped"), timeout)
+            .await
+            .map_err(|err| format!("Failed to read from GDB session. [Error]: {}", err))?;
+
+        Ok(format!("GDB debugee stopped.\n[GDB output]: {}", response))
     }
 
     #[tool(description = "Terminate a GDB session")]

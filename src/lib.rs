@@ -82,12 +82,16 @@ impl CLIDebugSession {
         Ok(())
     }
 
-    pub async fn read_response(&mut self) -> Result<String, std::io::Error> {
+    pub async fn read_response_until<S: AsRef<str>>(
+        &mut self,
+        pattern: Option<S>,
+        timeout: Duration,
+    ) -> Result<String, std::io::Error> {
         let mut stdout_buffer = String::new();
         let mut stderr_buffer = String::new();
         let mut output = String::new();
 
-        let sleep = time::sleep(CHILD_READ_TIMEOUT);
+        let sleep = time::sleep(timeout);
         tokio::pin!(sleep);
 
         loop {
@@ -100,27 +104,53 @@ impl CLIDebugSession {
                     output.push_str(&stderr_buffer);
                 }
                 _ = &mut sleep => {
-                    // Timeout occurred
-                    output.push_str("[command timed out]");
+                    // Timeout occurred, stop reading
+                    if output.is_empty() {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "Timeout while waiting for response",
+                        ));
+                    }
                     break Ok(output);
                 }
             }
             stdout_buffer.clear();
             stderr_buffer.clear();
 
-            // Check if we got next input prompt
-            if output.contains(&self.prompt) {
+            // Check if we got next input prompt and the expected pattern if any
+            if let Some(pattern) = &pattern {
+                if output.contains(pattern.as_ref()) && output.contains(&self.prompt) {
+                    break Ok(output);
+                }
+            } else if output.contains(&self.prompt) {
                 break Ok(output);
             }
         }
+    }
+
+    pub async fn read_response(&mut self) -> Result<String, std::io::Error> {
+        self.read_response_until::<&str>(None, CHILD_READ_TIMEOUT)
+            .await
     }
 
     pub async fn execute_command<S: AsRef<str>>(
         &mut self,
         command: S,
     ) -> Result<String, std::io::Error> {
+        let one_msecond = Duration::from_millis(1);
+        let mut response = self
+            .read_response_until::<&str>(None, one_msecond)
+            .await
+            .unwrap_or_default();
         self.send_command(command.as_ref()).await?;
-        self.read_response().await
+        response.push_str(&self.read_response().await?);
+        response.push_str(
+            &self
+                .read_response_until::<&str>(None, one_msecond)
+                .await
+                .unwrap_or_default(),
+        );
+        Ok(response)
     }
 
     pub async fn terminate(&mut self) -> Result<(), std::io::Error> {

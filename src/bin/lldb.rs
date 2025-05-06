@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-use debuggers_mcp::{CLIDebugSession, CLIDebugger, generate_session_id};
+use dbgmcp::{CLIDebugSession, CLIDebugger, generate_session_id};
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -68,15 +68,10 @@ impl LldbServer {
             session_id
         ))?;
 
-        let response = async || -> Result<String, std::io::Error> {
-            let mut response = session
-                .execute_command(&format!("file {}", program))
-                .await?;
-            response.push_str(&session.execute_command("\n").await?);
-            Ok(response)
-        }()
-        .await
-        .map_err(|err| format!("Failed to execute LLDB command. [Error]: {}", err))?;
+        let response = session
+            .execute_command(&format!("file {}", program))
+            .await
+            .map_err(|err| format!("Failed to execute LLDB command. [Error]: {}", err))?;
 
         Ok(format!(
             "Program loaded into LLDB.\n [LLDB output]: {}",
@@ -100,15 +95,40 @@ impl LldbServer {
             session_id
         ))?;
 
-        let response = async || -> Result<String, std::io::Error> {
-            let mut response = session.execute_command(&command).await?;
-            response.push_str(&session.execute_command("\n").await?);
-            Ok(response)
-        }()
-        .await
-        .map_err(|err| format!("Failed to execute LLDB command. [Error]: {}", err))?;
+        let response = session
+            .execute_command(&command)
+            .await
+            .map_err(|err| format!("Failed to execute LLDB command. [Error]: {}", err))?;
 
         Ok(format!("Command executed.\n[LLDB output]: {}", response))
+    }
+
+    #[tool(description = "Wait for LLDB debugee to hit a breakpoint or stop running")]
+    async fn lldb_wait(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "LLDB session ID")]
+        session_id: String,
+        #[tool(param)]
+        #[schemars(description = "Timeout in seconds")]
+        timeout: Option<u64>,
+    ) -> Result<String, String> {
+        let mut sessions = self.sessions.lock().await;
+        let session = sessions.get_mut(&session_id).ok_or(format!(
+            "Session with ID {} not found. Start a new session",
+            session_id
+        ))?;
+        let timeout = Duration::from_secs(timeout.unwrap_or(10));
+
+        let response = session
+            .read_response_until(Some("stop reason"), timeout)
+            .await
+            .map_err(|err| format!("Failed to read from GDB session. [Error]: {}", err))?;
+
+        Ok(format!(
+            "LLDB debugee stopped.\n[LLDB output]: {}",
+            response
+        ))
     }
 
     #[tool(description = "Terminate a LLDB session")]

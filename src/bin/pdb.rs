@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use debuggers_mcp::{CLIDebugSession, CLIDebugger, generate_session_id};
+use dbgmcp::{CLIDebugSession, CLIDebugger, generate_session_id};
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -52,7 +52,7 @@ impl PdbServer {
         }
         let mut session = CLIDebugger::new("python3")
             .args(pdb_args)
-            .prompt("(pdb)")
+            .prompt("(Pdb)")
             .spawn()
             .map_err(|err| format!("Failed to start PDB session. [Error]: {}", err))?;
         let response = session
