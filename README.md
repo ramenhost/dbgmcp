@@ -20,18 +20,18 @@ Supported debuggers include:
 
 ## Installation
 
-Simple way is to pick a pre-built binary for your platform from the [releases page](https://github.com/ramenhost/dbgmcp/releases). 
+Simple way is to pick a pre-built binary for your platform from the [releases page](https://github.com/ramenhost/dbgmcp/releases).
+Currently, pre-built binaries are available for the following platforms:
+- Linux x86_64 (`x86_64-unknown-linux-musl`)
 
-The binaries are named according to the debugger they support: 
+The binaries are named according to the debugger they support:
 - gdb-mcp
 - lldb-mcp
 - pdb-mcp.
 
 If pre-built binaries are not available for your platform, you can build the project from source.
 
-<details>
-
-<summary>Building from source</summary>
+## Building from source
 
 Requires Rust and Cargo to be installed. You can install them using [rustup](https://www.rust-lang.org/tools/install).
 

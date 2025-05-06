@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    # env:
+    # Set to force version number, e.g., when no tag exists.
+    # CLOAK_VERSION: TEST-0.0.0
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      cloak_version: ${{ env.CLOAK_VERSION }}
+    steps:
+      - name: Get the release version from the tag
+        shell: bash
+        if: env.CLOAK_VERSION == ''
+        run: |
+          # Apparently, this is the right way to get a tag name. Really?
+          #
+          # See: https://github.community/t5/GitHub-Actions/How-to-get-just-the-tag-name/m-p/32167/highlight/true#M1027
+          echo "CLOAK_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "version is: ${{ env.CLOAK_VERSION }}"
+      - name: Create GitHub release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.CLOAK_VERSION }}
+          release_name: ${{ env.CLOAK_VERSION }}
+
+  build-release:
+    name: build-release
+    needs: ["create-release"]
+    runs-on: ${{ matrix.os }}
+    env:
+      TARGET_DIR: ./target
+    strategy:
+      matrix:
+        build:
+          - linux
+        include:
+          - build: linux
+            os: ubuntu-latest
+            rust: stable
+            target: x86_64-unknown-linux-musl
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install rust targets
+        run: rustup target add ${{ matrix.target }}
+      - name: Build release binaries
+        run: cargo build --verbose --release --target ${{ matrix.target }} --target-dir ${{ env.TARGET_DIR }}
+      - name: Strip release binary (linux and macos)
+        if: matrix.build == 'linux' || matrix.build == 'macos'
+        run: |
+          strip "target/${{ matrix.target }}/release/gdb-mcp"
+          strip "target/${{ matrix.target }}/release/lldb-mcp"
+          strip "target/${{ matrix.target }}/release/pdb-mcp"
+      - name: Build archive
+        shell: bash
+        run: |
+          staging="dbgmcp-${{ needs.create-release.outputs.cloak_version }}-${{ matrix.target }}"
+          mkdir "$staging"
+          cp {README.md,LICENSE} "$staging/"
+
+          cp "target/${{ matrix.target }}/release/gdb-mcp" "$staging/"
+          cp "target/${{ matrix.target }}/release/lldb-mcp" "$staging/"
+          cp "target/${{ matrix.target }}/release/pdb-mcp" "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
