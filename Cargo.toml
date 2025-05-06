@@ -2,6 +2,11 @@
 name = "dbgmcp"
 version = "0.1.0"
 edition = "2024"
+description = "MCP servers for connecting debuggers to AI agents"
+repository = "https://github.com/ramenhost/dbgmcp"
+license = "MIT"
+keywords = ["debugging", "mcp"]
+categories = ["development-tools::debugging"]
 
 [[bin]]
 name = "gdb-mcp"
