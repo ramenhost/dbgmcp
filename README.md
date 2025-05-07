@@ -9,6 +9,8 @@ Supported debuggers include:
 - LLDB (LLVM Debugger)
 - PDB (Python Debugger)
 
+https://github.com/user-attachments/assets/fa745e69-2bd9-482c-b5f1-59b42e458760
+
 ## Features
 - Separate servers for each debugger. Enable or disable them as needed.
 - Load programs into the debugger.
